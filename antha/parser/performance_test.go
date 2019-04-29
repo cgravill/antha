@@ -18,7 +18,7 @@
 // For more information relating to the software or licensing issues please
 // contact license@antha-lang.org or write to the Antha team c/o
 // Synthace Ltd. The London Bioscience Innovation Centre
-// 1 Royal College St, London NW1 0NH UK
+// 2 Royal College St, London NW1 0NH UK
 
 // Copyright 2012 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -27,12 +27,11 @@
 package parser
 
 import (
-	"github.com/antha-lang/antha/antha/token"
 	"io/ioutil"
 	"testing"
-)
 
-var src = readFile("parser.go")
+	"github.com/antha-lang/antha/antha/token"
+)
 
 func readFile(filename string) []byte {
 	data, err := ioutil.ReadFile(filename)
@@ -43,6 +42,8 @@ func readFile(filename string) []byte {
 }
 
 func BenchmarkParse(b *testing.B) {
+	src := readFile("parser.go")
+	b.Skip("external files")
 	b.SetBytes(int64(len(src)))
 	for i := 0; i < b.N; i++ {
 		if _, err := ParseFile(token.NewFileSet(), "", src, ParseComments); err != nil {

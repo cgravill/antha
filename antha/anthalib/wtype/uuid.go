@@ -18,12 +18,13 @@
 // For more information relating to the software or licensing issues please
 // contact license@antha-lang.org or write to the Antha team c/o
 // Synthace Ltd. The London Bioscience Innovation Centre
-// 1 Royal College St, London NW1 0NH UK
+// 2 Royal College St, London NW1 0NH UK
 
 package wtype
 
 import (
-	"github.com/antha-lang/antha/internal/github.com/twinj/uuid"
+	//"github.com/dustinkirkland/golang-petname"
+	"github.com/twinj/uuid"
 )
 
 // this package wraps the uuid library appropriately
@@ -31,6 +32,18 @@ import (
 func GetUUID() string {
 	return uuid.NewV4().String()
 }
+
+/*
+// for debugging this can be useful
+func GetUUID() string {
+	return petname.Generate(2, "_")
+}
+
+func GetRUID(k int) string {
+	return petname.Generate(k, "_")
+}
+*/
+
 func NewUUID() string {
 	return GetUUID()
 }

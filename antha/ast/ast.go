@@ -18,7 +18,7 @@
 // For more information relating to the software or licensing issues please
 // contact license@antha-lang.org or write to the Antha team c/o
 // Synthace Ltd. The London Bioscience Innovation Centre
-// 1 Royal College St, London NW1 0NH UK
+// 2 Royal College St, London NW1 0NH UK
 
 // Copyright 2009 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -30,10 +30,11 @@
 package ast
 
 import (
-	"github.com/antha-lang/antha/antha/token"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/antha-lang/antha/antha/token"
 )
 
 // ----------------------------------------------------------------------------
@@ -931,10 +932,11 @@ type (
 	//	token.CONST       *ValueSpec
 	//	token.TYPE        *TypeSpec
 	//	token.VAR         *ValueSpec
-	//  token.PARAMETERS  *ValueSpec
-	//  token.DATA		 *ValueSpec
-	//  token.INPUTS      *ValueSpec
-	//  token.OUTPUTS	 *ValueSpec
+	//	token.PARAMETERS  *TypeSpec
+	//	token.DATA        *TypeSpec
+	//	token.INPUTS      *TypeSpec
+	//	token.OUTPUTS     *TypeSpec
+	//	token.MESSAGE     *TypeSpec
 	//
 	GenDecl struct {
 		Doc    *CommentGroup // associated documentation; or nil

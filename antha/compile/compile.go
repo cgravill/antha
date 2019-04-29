@@ -1,5 +1,5 @@
-// antha/compile/compile.go: Part of the Antha language
-// Copyright (C) 2014 The Antha authors. All rights reserved.
+// compile.go: Part of the Antha language
+// Copyright (C) 2017 The Antha authors. All rights reserved.
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -18,24 +18,28 @@
 // For more information relating to the software or licensing issues please
 // contact license@antha-lang.org or write to the Antha team c/o
 // Synthace Ltd. The London Bioscience Innovation Centre
-// 1 Royal College St, London NW1 0NH UK
+// 2 Royal College St, London NW1 0NH UK
 
-// package compile declares the functions required to translate an
-// Antha AST into a go source file
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
+// Package compile declares the functions required to translate an Antha AST
+// into a go source file
 package compile
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/antha-lang/antha/antha/ast"
-	"github.com/antha-lang/antha/antha/token"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"unicode"
+
+	"github.com/antha-lang/antha/antha/ast"
+	"github.com/antha-lang/antha/antha/token"
 )
 
 const (
@@ -64,6 +68,7 @@ const (
 	noExtraLinebreak                   // disables extra line break after /*-style comment
 )
 
+// nolint: structcheck
 type commentInfo struct {
 	cindex         int               // current comment index
 	comment        *ast.CommentGroup // = compiler.comments[cindex]; or nil
@@ -110,8 +115,7 @@ type compiler struct {
 	cachedPos  token.Pos
 	cachedLine int // line corresponding to cachedPos
 
-	// State needed to parse Antha nodes
-	antha
+	lineMap map[int]int // maps output line to source line
 }
 
 func (p *compiler) init(cfg *Config, fset *token.FileSet, nodeSizes map[ast.Node]int) {
@@ -122,8 +126,7 @@ func (p *compiler) init(cfg *Config, fset *token.FileSet, nodeSizes map[ast.Node
 	p.wsbuf = make([]whiteSpace, 0, 16) // whitespace sequences are short
 	p.nodeSizes = nodeSizes
 	p.cachedPos = -1
-
-	p.anthaInit()
+	p.lineMap = make(map[int]int)
 }
 
 func (p *compiler) internalError(msg ...interface{}) {
@@ -299,6 +302,7 @@ func (p *compiler) writeString(pos token.Position, s string, isLit bool) {
 		// atLineBegin updates p.pos if there's indentation, but p.pos
 		// is the position of s.
 		p.pos = pos
+		p.lineMap[p.out.Line] = pos.Line
 	}
 
 	if isLit {
@@ -968,10 +972,10 @@ func (p *compiler) print(args ...interface{}) {
 			p.lastTok = token.STRING
 
 		default:
+			// nolint
 			fmt.Fprintf(os.Stderr, "print: unsupported argument %v (%T)\n", arg, arg)
 			panic("antha/compiler type")
 		}
-		// data != ""
 
 		next := p.pos // estimated/accurate position of next item
 		wroteNewline, droppedFF := p.flush(next, p.lastTok)
@@ -1207,9 +1211,15 @@ func (p *trimmer) Write(data []byte) (n int, err error) {
 				p.resetSpace()
 				p.space = append(p.space, b)
 			case '\n', '\f':
-				_, err = p.output.Write(data[m:n])
+				_, e1 := p.output.Write(data[m:n])
 				p.resetSpace()
-				_, err = p.output.Write(aNewline)
+				_, e2 := p.output.Write(aNewline)
+				if e1 != nil && err == nil {
+					err = e1
+				}
+				if e2 != nil && err == nil {
+					err = e2
+				}
 			case tabwriter.Escape:
 				_, err = p.output.Write(data[m:n])
 				p.state = inEscape
@@ -1239,6 +1249,7 @@ func (p *trimmer) Write(data []byte) (n int, err error) {
 // A Mode value is a set of flags (or 0). They control printing.
 type Mode uint
 
+// Valid modes
 const (
 	RawFormat Mode = 1 << iota // do not use a tabwriter; if set, UseSpaces is ignored
 	TabIndent                  // use tabs for indentation independent of UseSpaces
@@ -1254,7 +1265,7 @@ type Config struct {
 }
 
 // fprint implements Fprint and takes a nodesSizes map for setting up the compiler state.
-func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{}, nodeSizes map[ast.Node]int) (err error) {
+func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{}, nodeSizes map[ast.Node]int) (lineMap map[int]int, err error) {
 	// print node
 	var p compiler
 	p.init(cfg, fset, nodeSizes)
@@ -1264,6 +1275,7 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 	// print outstanding comments
 	p.impliedSemi = false // EOF acts like a newline
 	p.flush(token.Position{Offset: infinity, Line: infinity}, token.EOF)
+	lineMap = p.lineMap
 
 	// redirect output through a trimmer to eliminate trailing whitespace
 	// (Input to a tabwriter must be untrimmed since trailing tabs provide
@@ -1302,17 +1314,6 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 	return
 }
 
-func (cfg *Config) mainFprint(output io.Writer, fset *token.FileSet, node interface{}, nodeSizes map[ast.Node]int, packageRoute string) (err error) {
-	var p compiler
-	p.init(cfg, fset, nodeSizes)
-	p.printNode(node) // would be cheaper to save it from last execution
-	_, err = output.Write(p.standAlone(node.(*ast.File), packageRoute))
-	if err != nil {
-		panic(err)
-	}
-	return
-}
-
 // A CommentedNode bundles an AST node and corresponding comments.
 // It may be provided as argument to any of the Fprint functions.
 //
@@ -1326,18 +1327,14 @@ type CommentedNode struct {
 // The node type must be *ast.File, *CommentedNode, []ast.Decl, []ast.Stmt,
 // or assignment-compatible to ast.Expr, ast.Decl, ast.Spec, or ast.Stmt.
 //
-func (cfg *Config) Fprint(output io.Writer, fset *token.FileSet, node interface{}) error {
+func (cfg *Config) Fprint(output io.Writer, fset *token.FileSet, node interface{}) (map[int]int, error) {
 	return cfg.fprint(output, fset, node, make(map[ast.Node]int))
-}
-
-//MainFprintf prints the contents of a main function for the file given in the buffer given as parameter
-func (cfg *Config) MainFprint(output io.Writer, fset *token.FileSet, node interface{}, packageRoute string) error {
-	return cfg.mainFprint(output, fset, node, make(map[ast.Node]int), packageRoute)
 }
 
 // Fprint "pretty-prints" an AST node to output.
 // It calls Config.Fprint with default settings.
 //
 func Fprint(output io.Writer, fset *token.FileSet, node interface{}) error {
-	return (&Config{Tabwidth: 8}).Fprint(output, fset, node)
+	_, err := (&Config{Tabwidth: 8}).Fprint(output, fset, node)
+	return err
 }
